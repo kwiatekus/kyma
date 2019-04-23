@@ -41,14 +41,10 @@ type RootResolver struct {
 }
 
 func New(restConfig *rest.Config, contentCfg content.Config, appCfg application.Config, informerResyncPeriod time.Duration, featureToggles experimental.FeatureToggles) (*RootResolver, error) {
-	uiContainer, err := ui.New(restConfig, informerResyncPeriod)
-	makePluggable := module.MakePluggableFunc(uiContainer.BackendModuleInformer)
-
 	contentContainer, err := content.New(contentCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "while initializing Content resolver")
 	}
-	makePluggable(contentContainer)
 
 	assetStoreContainer, err := assetstore.New(restConfig, informerResyncPeriod)
 	if err != nil {
@@ -85,6 +81,8 @@ func New(restConfig *rest.Config, contentCfg content.Config, appCfg application.
 		return nil, errors.Wrap(err, "while initializing K8S resolver")
 	}
 
+	uiContainer, err := ui.New(restConfig, informerResyncPeriod)
+
 	kubelessResolver, err := kubeless.New(restConfig, informerResyncPeriod)
 	if err != nil {
 		return nil, errors.Wrap(err, "while initializing Kubeless resolver")
@@ -102,6 +100,9 @@ func New(restConfig *rest.Config, contentCfg content.Config, appCfg application.
 		return nil, errors.Wrap(err, "while initializing authentication resolver")
 	}
 	makePluggable(authenticationResolver)
+
+	makePluggable := module.MakePluggableFunc(uiContainer.BackendModuleInformer)
+	makePluggable(contentContainer)
 
 	return &RootResolver{
 		k8s:            k8sResolver,
@@ -486,6 +487,10 @@ func (r *queryResolver) IDPPresets(ctx context.Context, first *int, offset *int)
 
 func (r *queryResolver) BackendModules(ctx context.Context) ([]gqlschema.BackendModule, error) {
 	return r.ui.BackendModulesQuery(ctx)
+}
+
+func (r *queryResolver) KymaVersion(ctx context.Context) (string, error) {
+	return r.ui.KymaVersionQuery(ctx)
 }
 
 func (r *queryResolver) Secret(ctx context.Context, name, namespace string) (*gqlschema.Secret, error) {

@@ -16,7 +16,7 @@ type Container struct {
 
 type Resolver struct {
 	*backendModuleResolver
-
+	*kymaVersionResolver
 	informerFactory externalversions.SharedInformerFactory
 }
 
@@ -33,6 +33,7 @@ func New(restConfig *rest.Config, informerResyncPeriod time.Duration) (*Containe
 	return &Container{
 		Resolver: &Resolver{
 			backendModuleResolver: newBackendModuleResolver(backendModuleService),
+			kymaVersionResolver:   newKymaVersionResolver(),
 			informerFactory:       informerFactory,
 		},
 		BackendModuleInformer: backendModuleInformer,

@@ -487,6 +487,7 @@ type ComplexityRoot struct {
 		Secrets               func(childComplexity int, namespace string, first *int, offset *int) int
 		Idppreset             func(childComplexity int, name string) int
 		Idppresets            func(childComplexity int, first *int, offset *int) int
+		KymaVersion           func(childComplexity int) int
 	}
 
 	ReplicaSet struct {
@@ -872,6 +873,7 @@ type QueryResolver interface {
 	Secrets(ctx context.Context, namespace string, first *int, offset *int) ([]Secret, error)
 	IDPPreset(ctx context.Context, name string) (*IDPPreset, error)
 	IDPPresets(ctx context.Context, first *int, offset *int) ([]IDPPreset, error)
+	KymaVersion(ctx context.Context) (string, error)
 }
 type ServiceBindingResolver interface {
 	Secret(ctx context.Context, obj *ServiceBinding) (*Secret, error)
@@ -5575,6 +5577,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.Idppresets(childComplexity, args["first"].(*int), args["offset"].(*int)), true
+
+	case "Query.kymaVersion":
+		if e.complexity.Query.KymaVersion == nil {
+			break
+		}
+
+		return e.complexity.Query.KymaVersion(childComplexity), true
 
 	case "ReplicaSet.name":
 		if e.complexity.ReplicaSet.Name == nil {
@@ -16581,6 +16590,15 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				}
 				wg.Done()
 			}(i, field)
+		case "kymaVersion":
+			wg.Add(1)
+			go func(i int, field graphql.CollectedField) {
+				out.Values[i] = ec._Query_kymaVersion(ctx, field)
+				if out.Values[i] == graphql.Null {
+					invalid = true
+				}
+				wg.Done()
+			}(i, field)
 		case "__type":
 			out.Values[i] = ec._Query___type(ctx, field)
 		case "__schema":
@@ -18827,6 +18845,33 @@ func (ec *executionContext) _Query_IDPPresets(ctx context.Context, field graphql
 	}
 	wg.Wait()
 	return arr1
+}
+
+// nolint: vetshadow
+func (ec *executionContext) _Query_kymaVersion(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object: "Query",
+		Args:   nil,
+		Field:  field,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().KymaVersion(rctx)
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return graphql.MarshalString(res)
 }
 
 // nolint: vetshadow
@@ -28113,6 +28158,8 @@ type Query {
 
     IDPPreset(name: String!): IDPPreset @HasAccess(attributes: {resource: "idppresets", verb: "get", apiGroup: "authentication.kyma-project.io", apiVersion: "v1alpha1"})
     IDPPresets(first: Int, offset: Int): [IDPPreset!]! @HasAccess(attributes: {resource: "idppresets", verb: "list", apiGroup: "authentication.kyma-project.io", apiVersion: "v1alpha1"})
+
+    kymaVersion: String!
 }
 
 # Mutations
