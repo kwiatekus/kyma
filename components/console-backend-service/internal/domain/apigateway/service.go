@@ -40,13 +40,17 @@ func (svc *Service) List(namespace string, serviceName *string, hostname *string
 	for _, item := range items {
 		match := true
 		if serviceName != nil {
-			if *serviceName != *item.Spec.Service.Name {
-				match = false
+			if item.Spec.Service != nil {
+				if *serviceName != *item.Spec.Service.Name {
+					match = false
+				}
 			}
 		}
 		if hostname != nil {
-			if *hostname != *item.Spec.Service.Host {
-				match = false
+			if item.Spec.Service != nil {
+				if *hostname != *item.Spec.Service.Host {
+					match = false
+				}
 			}
 		}
 
