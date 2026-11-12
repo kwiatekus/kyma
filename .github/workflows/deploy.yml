@@ -1,0 +1,185 @@
+name: 📰 Deploy VitePress site to GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository_branches:
+        description: 'YAML-MAP or JSON with repository branches: {"btp-manager": "main", "istio": "release-1.20"} or [{"repository": "btp-manager", "branch": "main"}]'
+        required: false
+        default: '{}'
+  schedule:
+    - cron: '0 0,12,16 * * *'  # Runs at 00:00, 12:00, and 16:00 UTC every day
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  copy-docs:
+    name: 📋 Copy doc files from external repositories
+    strategy:
+      fail-fast: false
+      matrix:
+        repository:
+          - btp-manager
+          - istio
+          - serverless
+          - telemetry-manager
+          - eventing-manager
+          - api-gateway
+          - nats-manager
+          - application-connector-manager
+          - keda-manager
+          - cloud-manager
+          - docker-registry
+          - busola
+          - cli
+          - registry-proxy
+          - community-modules
+          - registry-cache
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🔧 Determine branch for ${{matrix.repository}}
+        id: get-branch
+        run: |
+          set -euo pipefail
+          
+          REPO="${{ matrix.repository }}"
+          INPUT_RAW="${{ inputs.repository_branches }}"
+          DEFAULT_BRANCH="main"
+          BRANCH="$DEFAULT_BRANCH"
+          
+          echo "📄 Raw input: $INPUT_RAW"
+          echo "🔍 Repository: $REPO"
+          echo "🔍 Default branch: $DEFAULT_BRANCH"
+          
+          # 1. Search in the env variables: build the variable name as repo name --> to capital --> replace " " and "-" with "_" --> append "_BRANCH"
+          REPO_VAR=$(echo "$REPO" | tr '[:lower:]' '[:upper:]' | tr ' -' '_')_BRANCH
+          echo "🔍 Computed env variable name: $REPO_VAR"
+          
+          # Variable expansion using ! is not working for env if VARIABLE is dynamic. Combine jq and toJson to get the env variable value
+          VAR_BRANCH=$(jq -r --arg key "$REPO_VAR" '.[$key]' <<< '${{ toJson(vars) }}')
+
+          echo "🔍 Value from env ($REPO_VAR): ${VAR_BRANCH:-<not set>}"
+          
+          if [ "$VAR_BRANCH" != "null" ]; then
+            BRANCH="$VAR_BRANCH"
+            echo "✅ Using branch '$BRANCH' from GitHub variable ($REPO_VAR) for $REPO"
+          else
+            echo "ℹ️ No GitHub variable found for $REPO, checking input YAML/JSON..."
+          
+            # 2. No GitHub variable, read from input string
+            if [ -n "$INPUT_RAW" ] && [ "$INPUT_RAW" != "{}" ]; then
+              echo "🔍 Parsing input..."
+              if echo "$INPUT_RAW" | yq -o=json '.' >/dev/null 2>&1; then
+                PARSED=$(echo "$INPUT_RAW" | yq -o=json '.')
+                echo "✅ Input read as YAML converted to JSON"
+              elif echo "$INPUT_RAW" | jq empty >/dev/null 2>&1; then
+                PARSED="$INPUT_RAW"
+                echo "✅ Valid JSON conversion"
+              else
+                echo "⚠️ Not a valid YAML nor JSON"
+                PARSED="{}"
+              fi
+          
+              echo "🔍 Parsed content: $PARSED"
+          
+              # 3. Search in the map {repo: branch}
+              if echo "$PARSED" | jq -e "has(\"$REPO\")" >/dev/null 2>&1; then
+                BRANCH=$(echo "$PARSED" | jq -r ".[\"$REPO\"]")
+                echo "✅ Found branch '$BRANCH' for $REPO (map format)"
+              else
+                # 4. Search as array [{repository: repo, branch: branch}]
+                BRANCH_FROM_ARRAY=$(echo "$PARSED" | jq -r ".[] | select(.repository == \"$REPO\") | .branch" 2>/dev/null || echo "")
+                echo "🔍 Branch from array: ${BRANCH_FROM_ARRAY:-<none>}"
+                if [ -n "$BRANCH_FROM_ARRAY" ] && [ "$BRANCH_FROM_ARRAY" != "null" ]; then
+                  BRANCH="$BRANCH_FROM_ARRAY"
+                  echo "✅ Found branch '$BRANCH' for $REPO (array format)"
+                else
+                  echo "ℹ️ Repository $REPO not found in input, using default branch '$DEFAULT_BRANCH'"
+                fi
+              fi
+            else
+              echo "ℹ️ No input provided, using default branch '$DEFAULT_BRANCH'"
+            fi
+          fi
+          
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "🎯 Final decision: Using branch '$BRANCH' for repository '$REPO'"
+
+      - name: '🗂️ Checkout ${{matrix.repository}} (branch: ${{steps.get-branch.outputs.branch}})'
+        uses: actions/checkout@v4
+        with:
+          repository: kyma-project/${{matrix.repository}}
+          ref: ${{steps.get-branch.outputs.branch}}
+          path: ${{matrix.repository}}
+
+      - name: 🚢 Copy for main repo
+        run: |
+          SOURCE_PATH="${{matrix.repository}}/docs/user/"
+          TARGET_PATH="./docs/external-content/${{matrix.repository}}/docs/"
+          SOURCE_PATH_ASSETS="${{matrix.repository}}/docs/assets/"
+          TARGET_PATH_ASSETS="./docs/external-content/${{matrix.repository}}/docs/"
+          if [ -d "$SOURCE_PATH" ]; then
+            echo "📁 found in ${{matrix.repository}}, copy to $TARGET_PATH"
+            mkdir -p "$TARGET_PATH"
+            cp -rf "$SOURCE_PATH/" "$TARGET_PATH/"
+            if [ -d "$SOURCE_PATH_ASSETS" ]; then
+              echo "↳📁 found in ${{matrix.repository}}, copy to $TARGET_PATH_ASSETS"
+              mkdir -p "$TARGET_PATH_ASSETS"
+              cp -rf "$SOURCE_PATH_ASSETS/" "$TARGET_PATH_ASSETS/"
+            else
+              echo "↳🚫 no folder  docs/assets in ${{matrix.repository}}"
+            fi
+          else
+            echo "🚫 No folder docs/users in ${{matrix.repository}}"
+          fi
+      
+      - name: 📦 Upload copied docs
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{matrix.repository}}
+          path: ./docs/external-content/${{matrix.repository}}
+
+  build-and-deploy:
+    name: 🛠️ Build and Deploy VitePress
+    runs-on: ubuntu-latest
+    needs: copy-docs
+    steps:
+      - name: 🗂️ Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: 📥 Download copied docs
+        uses: actions/download-artifact@v5
+        with:
+          path: docs/external-content
+
+      - name: 🪢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 💾 Install dependencies
+        run: npm install
+
+      - name: 🛠️ Build VitePress site
+        run: npm run docs:build
+
+      - name: ⚙️ Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 🚀 Upload build artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .vitepress/dist
+
+      - name: 🔝 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        

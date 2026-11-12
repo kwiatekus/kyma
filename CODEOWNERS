@@ -7,39 +7,20 @@
 # These are the default owners for the whole content of the `kyma` repository. The default owners are automatically added as reviewers when you open a pull request unless different owners are specified in the file.
 * @kyma-project/kyma-steering-committee
 
-/.github @kyma-project/prow
-/.github/workflows @kyma-project/prow
+/.github/workflows/deploy.yml @kyma-project/technical-writers
 /.github/ISSUE_TEMPLATE @kyma-project/technical-writers
-
-
-# Owners of the .kyma-project-io folder
-/.kyma-project-io/ @kyma-project/Hasselhoff
 
 # Logging library
 /common/logging @kyma-project/Framefrog
-
-/components/central-application-connectivity-validator @kyma-project/Framefrog
-/components/central-application-gateway @kyma-project/Framefrog
-/components/compass-runtime-agent @kyma-project/Framefrog
-/components/event-publisher-proxy @kyma-project/eventing
-/components/eventing-controller @kyma-project/eventing
-
 
 # All files and subdirectories in /docs
 /docs @kyma-project/technical-writers
 
 /installation @kyma-project/Jellyfish
-/installation/resources/crds/compass-runtime-agent @kyma-project/Framefrog
 
-/resources/compass-runtime-agent @kyma-project/Framefrog
-
-/tests/components/application-connector @kyma-project/Framefrog
-
-# Config file for MILV - milv.config.yaml
-milv.config.yaml @kyma-project/technical-writers
-
-# VERSION file
-VERSION @kyma-project/prow
+# Config files for markdownlint
+.markdownlint.yaml @kyma-project/technical-writers
+heading_capitalization.js @kyma-project/technical-writers
 
 # All .md files
 *.md @kyma-project/technical-writers
@@ -48,3 +29,6 @@ VERSION @kyma-project/prow
 /modules @pbochynski @kyma-project/Jellyfish
 
 /hack/table-gen @k15r @kyma-project/kyma-steering-committee
+
+# VitePress configuration
+.vitepress/config.mjs @kyma-project/technical-writers
